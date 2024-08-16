@@ -1,6 +1,5 @@
 import asyncio
 import json
-import logging
 import os
 import random
 import time
@@ -8,15 +7,8 @@ import zipfile
 from datetime import datetime
 
 import aiohttp
-from config import (
-    BASE_URL,
-    HEADERS,
-    INDIVIDUAL_FILINGS_DIR,
-    PROGRESS_DIR,
-    RATE_LIMIT,
-    STRUCTURED_DATA_DIR,
-    STRUCTURED_DATA_URL,
-)
+import polars as pl
+from bs4 import BeautifulSoup
 from rich.progress import (
     BarColumn,
     MofNCompleteColumn,
@@ -26,7 +18,19 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
-logger = logging.getLogger(__name__)
+from config import (
+    BASE_URL,
+    FTD_BASE_URL,
+    FTD_DIR,
+    FTD_URL,
+    HEADERS,
+    INDIVIDUAL_FILINGS_DIR,
+    PROGRESS_DIR,
+    RATE_LIMIT,
+    STRUCTURED_DATA_DIR,
+    STRUCTURED_DATA_URL,
+    logger,
+)
 
 # Constants
 MAX_RETRIES = 10
@@ -363,7 +367,7 @@ async def download_structured_data(
             else:
                 progress_tracker.mark_failed("structured_data", year, quarter, item_id)
                 return
-
+    logger.info(f"Starting download of {url}")
     success = await download_file(session, url, filename)
     if success:
         progress_tracker.mark_downloaded("structured_data", item_id)
@@ -485,7 +489,8 @@ async def download_13f_data(quarters: list[tuple[int, int]]):
             all_filings.extend(new_filings)
 
         with progress:
-            tasks = []
+            structured_data_tasks = []
+            individual_filing_tasks = []
 
             # Set up progress bar for structured data
             if structured_data_quarters:
@@ -494,7 +499,7 @@ async def download_13f_data(quarters: list[tuple[int, int]]):
                     total=len(structured_data_quarters),
                     completed=progress_tracker.get_completed_count("structured_data"),
                 )
-                tasks.extend(
+                structured_data_tasks.extend(
                     [
                         download_structured_data(
                             session, year, quarter, progress, structured_data_task
@@ -521,7 +526,7 @@ async def download_13f_data(quarters: list[tuple[int, int]]):
                     total=total_individual_filings,
                     completed=completed_individual_filings,
                 )
-                tasks.extend(
+                individual_filing_tasks.extend(
                     [
                         download_individual_filing(
                             session,
@@ -535,8 +540,108 @@ async def download_13f_data(quarters: list[tuple[int, int]]):
                     ]
                 )
 
-            # Run all tasks concurrently if there are any
-            if tasks:
-                await asyncio.gather(*tasks)
+            await asyncio.gather(*structured_data_tasks)
+            await asyncio.gather(*individual_filing_tasks)
 
     progress_tracker.save_progress()
+
+
+async def download_and_process_ftd_data():
+    """
+    Download and process Fails-to-Deliver (FTD) data from the SEC website into a single CSV file.
+    """
+    async with aiohttp.ClientSession() as session:
+        # Fetch the FTD index page
+        async with session.get(FTD_URL, headers=HEADERS) as response:
+            html_content = await response.text()
+
+        soup = BeautifulSoup(html_content, "html.parser")
+        links = soup.find_all("a", href=lambda href: href and href.endswith(".zip"))
+
+        download_tasks = []
+        for link in links:
+            url = FTD_BASE_URL + link["href"]
+            date_str = link.text.strip().split(". ")[0]
+            if "half" in date_str.lower():
+                date = datetime.strptime(date_str.split(",")[0], "%B %Y")
+                if date.year >= 2014:
+                    download_tasks.append((url, date))
+
+        download_tasks.sort(key=lambda x: x[1], reverse=True)
+
+        all_data = []
+
+        progress = Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            MofNCompleteColumn(),
+            TimeRemainingColumn(),
+        )
+
+        with progress:
+            main_task = progress.add_task(
+                "Downloading and processing FTD data", total=len(download_tasks)
+            )
+
+            for url, date in download_tasks:
+                file_id = (
+                    f"ftd_{date.strftime('%Y%m')}{'b' if 'second' in url else 'a'}.zip"
+                )
+                zip_file = os.path.join(FTD_DIR, file_id)
+
+                await download_file(session, url, zip_file)
+
+                with zipfile.ZipFile(zip_file, "r") as zip_ref:
+                    extracted_file = zip_ref.namelist()[0]
+                    temp_file = os.path.join(FTD_DIR, "temp_file.txt")
+                    with open(temp_file, "wb") as f:
+                        f.write(zip_ref.read(extracted_file))
+
+                    df = pl.read_csv(
+                        temp_file,
+                        separator="|",
+                        ignore_errors=True,
+                        truncate_ragged_lines=True,
+                        infer_schema=False,
+                    )
+
+                os.remove(zip_file)
+                os.remove(temp_file)
+
+                if df["SETTLEMENT DATE"][0] == "SETTLEMENT DATE":
+                    df = df.slice(1)
+
+                df = df.with_columns(
+                    [
+                        pl.col("CUSIP").alias("cusip"),
+                        pl.col("SYMBOL").alias("symbol"),
+                        pl.col("QUANTITY (FAILS)").alias("quantity"),
+                        pl.col("PRICE").alias("price"),
+                        pl.col("SETTLEMENT DATE").alias("filing_date"),
+                        pl.col("DESCRIPTION").alias("nameofissuer"),
+                    ]
+                ).select(
+                    [
+                        "cusip",
+                        "symbol",
+                        "quantity",
+                        "price",
+                        "filing_date",
+                        "nameofissuer",
+                    ]
+                )
+
+                all_data.append(df)
+                progress.update(main_task, advance=1)
+
+                await rate_limiter.wait()
+
+        if all_data:
+            combined_df = pl.concat(all_data)
+            output_file = os.path.join(FTD_DIR, "ftd_data.csv")
+            combined_df.write_csv(output_file)
+            logger.info(f"Combined FTD data saved to {output_file}")
+        else:
+            logger.warning("No FTD data was processed.")

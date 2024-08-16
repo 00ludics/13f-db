@@ -8,3 +8,16 @@ wheels/
 
 # venv
 .venv
+
+# data
+data/
+
+# logs
+logs/
+
+# progress
+progress/
+
+# misc
+.DS_Store
+.vscode
