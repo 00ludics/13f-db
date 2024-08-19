@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import os
 import random
 import time
@@ -29,7 +30,6 @@ from config import (
     RATE_LIMIT,
     STRUCTURED_DATA_DIR,
     STRUCTURED_DATA_URL,
-    logger,
 )
 
 # Constants
@@ -286,20 +286,20 @@ async def download_file(
                     with open(filename, "wb") as f:
                         async for chunk in response.content.iter_chunked(8192):
                             f.write(chunk)
-                    logger.info(f"Downloaded: {filename}")
+                    logging.info(f"Downloaded: {filename}")
                     return True
                 elif response.status in [403, 404]:
-                    logger.warning(
+                    logging.warning(
                         f"{'Access forbidden' if response.status == 403 else 'File not found'}: {url}"
                     )
                     return False
                 else:
-                    logger.error(f"Failed to download {url}: HTTP {response.status}")
+                    logging.error(f"Failed to download {url}: HTTP {response.status}")
         except Exception as e:
-            logger.error(f"Error downloading {url} to {filename}: {str(e)}")
+            logging.error(f"Error downloading {url} to {filename}: {str(e)}")
 
         retry_delay = INITIAL_RETRY_DELAY * (2**attempt) + random.uniform(0, 1)
-        logger.info(f"Retrying in {retry_delay:.2f} seconds...")
+        logging.info(f"Retrying in {retry_delay:.2f} seconds...")
         await asyncio.sleep(retry_delay)
 
     return False
@@ -320,10 +320,10 @@ async def extract_zip(filename: str) -> bool:
             zipfile.ZipFile(filename, "r").extractall, os.path.splitext(filename)[0]
         )
         await asyncio.to_thread(os.remove, filename)
-        logger.info(f"Extracted: {filename}")
+        logging.info(f"Extracted: {filename}")
         return True
     except Exception as e:
-        logger.error(f"Error extracting {filename}: {str(e)}")
+        logging.error(f"Error extracting {filename}: {str(e)}")
         return False
 
 
@@ -354,10 +354,10 @@ async def download_structured_data(
 
     if progress_tracker.is_downloaded("structured_data", item_id):
         if not os.path.exists(filename):
-            logger.warning(f"File marked as downloaded but not found: {filename}")
+            logging.warning(f"File marked as downloaded but not found: {filename}")
             progress_tracker.remove_download_mark("structured_data", item_id)
         else:
-            logger.info(f"File already downloaded: {filename}")
+            logging.info(f"File already downloaded: {filename}")
             if await extract_zip(filename):
                 progress_tracker.mark_completed(
                     "structured_data", year, quarter, item_id
@@ -367,7 +367,7 @@ async def download_structured_data(
             else:
                 progress_tracker.mark_failed("structured_data", year, quarter, item_id)
                 return
-    logger.info(f"Starting download of {url}")
+    logging.info(f"Starting download of {url}")
     success = await download_file(session, url, filename)
     if success:
         progress_tracker.mark_downloaded("structured_data", item_id)
@@ -642,6 +642,6 @@ async def download_and_process_ftd_data():
             combined_df = pl.concat(all_data)
             output_file = os.path.join(FTD_DIR, "ftd_data.csv")
             combined_df.write_csv(output_file)
-            logger.info(f"Combined FTD data saved to {output_file}")
+            logging.info(f"Combined FTD data saved to {output_file}")
         else:
-            logger.warning("No FTD data was processed.")
+            logging.warning("No FTD data was processed.")

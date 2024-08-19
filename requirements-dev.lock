@@ -36,6 +36,7 @@ polars==1.4.1
 psycopg2==2.9.9
 pygments==2.18.0
     # via rich
+python-dotenv==1.0.1
 rich==13.7.1
     # via typer
 shellingham==1.5.4

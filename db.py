@@ -1,10 +1,11 @@
+import logging
 import os
 
 import psycopg2
 from psycopg2 import sql
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
-from config import DB_HOST, DB_NAME, DB_PASSWORD, DB_USER, PROGRESS_DIR, logger
+from config import DB_HOST, DB_NAME, DB_PASSWORD, DB_USER, PROGRESS_DIR
 
 
 def create_extension(conn):
@@ -14,9 +15,9 @@ def create_extension(conn):
         cur = conn.cursor()
         cur.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm;")
         conn.commit()
-        logger.info("pg_trgm extension created or already exists.")
+        logging.info("pg_trgm extension created or already exists.")
     except psycopg2.Error as e:
-        logger.error(f"Error creating extension: {str(e)}")
+        logging.error(f"Error creating extension: {str(e)}")
         conn.rollback()
         raise
     finally:
@@ -25,7 +26,7 @@ def create_extension(conn):
 
 
 def create_database():
-    """Create the database."""
+    """Create the database if it doesn't exist."""
     conn = None
     cur = None
     try:
@@ -34,10 +35,22 @@ def create_database():
         )
         conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
         cur = conn.cursor()
-        cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(DB_NAME)))
-        logger.info(f"Database '{DB_NAME}' created successfully.")
+
+        # Check if the database already exists
+        cur.execute(
+            "SELECT 1 FROM pg_catalog.pg_database WHERE datname = %s", (DB_NAME,)
+        )
+        exists = cur.fetchone()
+
+        if not exists:
+            # Create the database if it doesn't exist
+            cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(DB_NAME)))
+            logging.info(f"Database '{DB_NAME}' created successfully.")
+        else:
+            logging.info(f"Database '{DB_NAME}' already exists.")
+
     except psycopg2.Error as e:
-        logger.error(f"Error creating database: {str(e)}")
+        logging.error(f"Error creating database: {str(e)}")
         raise
     finally:
         if cur:
@@ -59,9 +72,9 @@ def drop_database():
         cur.execute(
             sql.SQL("DROP DATABASE IF EXISTS {}").format(sql.Identifier(DB_NAME))
         )
-        logger.info(f"Database '{DB_NAME}' dropped successfully.")
+        logging.info(f"Database '{DB_NAME}' dropped successfully.")
     except psycopg2.Error as e:
-        logger.error(f"Error dropping database: {str(e)}")
+        logging.error(f"Error dropping database: {str(e)}")
         raise
     finally:
         if cur:
@@ -88,9 +101,9 @@ def terminate_database_connections():
             """,
             (DB_NAME,),
         )
-        logger.info(f"All connections to database '{DB_NAME}' terminated.")
+        logging.info(f"All connections to database '{DB_NAME}' terminated.")
     except psycopg2.Error as e:
-        logger.error(f"Error terminating database connections: {str(e)}")
+        logging.error(f"Error terminating database connections: {str(e)}")
         raise
     finally:
         if cur:
@@ -112,7 +125,7 @@ def reset_database():
         if os.path.exists(os.path.join(PROGRESS_DIR, "processing_progress.json")):
             os.remove(os.path.join(PROGRESS_DIR, "processing_progress.json"))
     except psycopg2.Error as e:
-        logger.error(f"Error resetting database: {str(e)}")
+        logging.error(f"Error resetting database: {str(e)}")
         raise
     finally:
         if conn:
@@ -205,12 +218,12 @@ def create_tables():
             """)
 
             conn.commit()
-            logger.info("Tables created successfully.")
+            logging.info("Tables created successfully.")
         else:
-            logger.info("Tables already exist. Skipping table creation.")
+            logging.info("Tables already exist. Skipping table creation.")
 
     except psycopg2.Error as e:
-        logger.error(f"Error creating tables: {str(e)}")
+        logging.error(f"Error creating tables: {str(e)}")
         conn.rollback()
         raise
     finally:
@@ -230,7 +243,7 @@ def create_indices():
         )
         cur = conn.cursor()
 
-        logger.info("Starting index creation...")
+        logging.info("Starting index creation...")
         index_queries = [
             (
                 "idx_filings_cik_periodofreport",
@@ -270,14 +283,14 @@ def create_indices():
             try:
                 cur.execute(query)
                 conn.commit()
-                logger.info(f"Index {index_name} created successfully.")
+                logging.info(f"Index {index_name} created successfully.")
             except psycopg2.Error as e:
-                logger.error(f"Error creating index {index_name}: {str(e)}")
+                logging.error(f"Error creating index {index_name}: {str(e)}")
                 conn.rollback()
 
-        logger.info("All indices created.")
+        logging.info("All indices created.")
     except psycopg2.Error as e:
-        logger.error(f"Unexpected error during index creation: {str(e)}")
+        logging.error(f"Unexpected error during index creation: {str(e)}")
         conn.rollback()
         raise
     finally:
@@ -297,7 +310,7 @@ def drop_indices():
         )
         cur = conn.cursor()
         try:
-            logger.info("Dropping all indices...")
+            logging.info("Dropping all indices...")
             cur.execute("""
                 DROP INDEX IF EXISTS idx_filings_cik_periodofreport;
                 DROP INDEX IF EXISTS idx_filings_periodofreport;
@@ -309,9 +322,9 @@ def drop_indices():
                 DROP INDEX IF EXISTS idx_holdings_cusip_filing_id;
             """)
             conn.commit()
-            logger.info("All indices dropped.")
+            logging.info("All indices dropped.")
         except psycopg2.Error as e:
-            logger.error(f"Unexpected error during index creation: {str(e)}")
+            logging.error(f"Unexpected error during index creation: {str(e)}")
             conn.rollback()
             raise
     finally:
@@ -331,46 +344,122 @@ def create_views():
         )
         cur = conn.cursor()
 
-        # Create aggregate_holdings materialized view
-        logger.info("Creating aggregate_holdings materialized view...")
+        # Create median_value_per_share materialized view
+        logging.info("Creating median_value_per_share materialized view...")
         cur.execute("""
-            CREATE MATERIALIZED VIEW IF NOT EXISTS aggregate_holdings AS
+        CREATE MATERIALIZED VIEW IF NOT EXISTS median_value_per_share AS
+        WITH value_per_share AS (
             SELECT 
-                h.filing_id,
                 h.cusip,
-                h.nameofissuer,
-                h.titleofclass,
-                SUM(h.value) as value,
-                SUM(h.sshprnamt) as sshprnamt,
-                h.sshprnamttype,
-                h.putcall,
-                SUM(h.voting_auth_sole) as voting_auth_sole,
-                SUM(h.voting_auth_shared) as voting_auth_shared,
-                SUM(h.voting_auth_none) as voting_auth_none,
-                f.periodofreport,
                 EXTRACT(YEAR FROM f.periodofreport) AS report_year,
-                EXTRACT(QUARTER FROM f.periodofreport) AS report_quarter
-            FROM 
-                holdings h
-            JOIN 
-                filings f ON h.filing_id = f.id
-            GROUP BY 
-                h.filing_id, h.cusip, h.nameofissuer, h.titleofclass, h.sshprnamttype, h.putcall,
-                f.periodofreport;
+                EXTRACT(QUARTER FROM f.periodofreport) AS report_quarter,
+                CASE 
+                    WHEN h.sshprnamt != 0 THEN h.value::numeric / h.sshprnamt::numeric
+                    ELSE NULL
+                END AS value_per_share
+            FROM holdings h
+            JOIN filings f ON h.filing_id = f.id
+            WHERE h.sshprnamt != 0 AND h.value IS NOT NULL
+        )
+        SELECT 
+            cusip,
+            report_year,
+            report_quarter,
+            PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY value_per_share) AS median_value_per_share
+        FROM value_per_share
+        GROUP BY cusip, report_year, report_quarter;
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_median_value_per_share_unique 
+        ON median_value_per_share (cusip, report_year, report_quarter);
         """)
+        conn.commit()
+        logging.info("median_value_per_share materialized view created.")
+
+        # Create aggregate_holdings materialized view
+        logging.info("Creating aggregate_holdings materialized view...")
+        cur.execute("""
+        CREATE MATERIALIZED VIEW IF NOT EXISTS aggregate_holdings AS
+        SELECT 
+            h.filing_id,
+            h.cusip,
+            h.nameofissuer,
+            h.titleofclass,
+            CASE 
+                WHEN m.median_value_per_share IS NOT NULL AND SUM(h.sshprnamt) != 0 THEN
+                    CASE
+                        WHEN SUM(h.value)::numeric / SUM(h.sshprnamt)::numeric BETWEEN 
+                            m.median_value_per_share / 1250 AND m.median_value_per_share / 750
+                        THEN SUM(h.value) * 1000
+                        WHEN SUM(h.value)::numeric / SUM(h.sshprnamt)::numeric BETWEEN 
+                            750 * m.median_value_per_share AND 1250 * m.median_value_per_share
+                        THEN SUM(h.value) / 1000
+                        ELSE SUM(h.value)
+                    END
+                ELSE SUM(h.value)
+            END *
+            CASE 
+                WHEN f.periodofreport < '2022-10-01'
+                THEN 1000
+                ELSE 1
+            END as value,
+            SUM(h.sshprnamt) as sshprnamt,
+            h.sshprnamttype,
+            h.putcall,
+            SUM(h.voting_auth_sole) as voting_auth_sole,
+            SUM(h.voting_auth_shared) as voting_auth_shared,
+            SUM(h.voting_auth_none) as voting_auth_none,
+            f.periodofreport,
+            EXTRACT(YEAR FROM f.periodofreport) AS report_year,
+            EXTRACT(QUARTER FROM f.periodofreport) AS report_quarter
+        FROM 
+            holdings h
+        JOIN 
+            filings f ON h.filing_id = f.id
+        LEFT JOIN
+            median_value_per_share m ON h.cusip = m.cusip 
+                AND EXTRACT(YEAR FROM f.periodofreport) = m.report_year 
+                AND EXTRACT(QUARTER FROM f.periodofreport) = m.report_quarter
+        WHERE
+            h.putcall IS NULL
+        GROUP BY 
+            h.filing_id, h.cusip, h.nameofissuer, h.titleofclass, h.sshprnamttype, h.putcall,
+            f.periodofreport, m.median_value_per_share;
+        """)
+        conn.commit()
+        logging.info("aggregate_holdings materialized view created.")
 
         # Create indices on aggregate_holdings materialized view
-        logger.info("Creating indices on aggregate_holdings materialized view...")
+        logging.info("Creating indices on aggregate_holdings materialized view...")
         cur.execute("""
             CREATE INDEX IF NOT EXISTS idx_aggregate_holdings_on_filing_id ON aggregate_holdings (filing_id);
             CREATE INDEX IF NOT EXISTS idx_aggregate_holdings_on_cusip_and_filing_id ON aggregate_holdings (cusip, filing_id);
             CREATE INDEX IF NOT EXISTS idx_aggregate_holdings_cusip_year_quarter_filing_id ON aggregate_holdings (cusip, report_year, report_quarter, filing_id);
         """)
         conn.commit()
-        logger.info("aggregate_holdings materialized view and indices created.")
+        logging.info("aggregate_holdings materialized view and indices created.")
+
+        # Update filings totalvalue
+        logging.info("Updating filings totaltableentrytotal and tablevaluetotal...")
+        cur.execute("""
+        UPDATE filings f
+        SET
+            tableentrytotal = agg.total_entries,
+            tablevaluetotal = agg.total_value
+        FROM (
+            SELECT
+                filing_id,
+                COUNT(*) AS total_entries,
+                SUM(value) AS total_value
+            FROM aggregate_holdings
+            GROUP BY filing_id
+        ) agg
+        WHERE f.id = agg.filing_id;
+        """)
+        conn.commit()
+        logging.info("Filings totaltableentrytotal and tablevaluetotal updated.")
 
         # Create filers materialized view
-        logger.info("Creating filers materialized view...")
+        logging.info("Creating filers materialized view...")
         cur.execute("""
             CREATE MATERIALIZED VIEW IF NOT EXISTS filers AS 
             WITH most_recent AS (
@@ -388,6 +477,7 @@ def create_views():
                     filings.cik,
                     COUNT(*) AS filings_count
                 FROM filings
+                WHERE filings.restated_by IS NULL
                 GROUP BY filings.cik
             )
             SELECT 
@@ -405,10 +495,10 @@ def create_views():
             CREATE INDEX IF NOT EXISTS idx_filers_on_name ON filers USING gin (filingmanager_name gin_trgm_ops);
         """)
         conn.commit()
-        logger.info("filers materialized view and indices created.")
+        logging.info("filers materialized view and indices created.")
 
         # Create cusip_quarterly_filings_counts materialized view
-        logger.info("Creating cusip_quarterly_filings_counts materialized view...")
+        logging.info("Creating cusip_quarterly_filings_counts materialized view...")
         cur.execute("""
             CREATE MATERIALIZED VIEW IF NOT EXISTS cusip_quarterly_filings_counts AS
             SELECT 
@@ -424,12 +514,12 @@ def create_views():
             ON cusip_quarterly_filings_counts (cusip, report_year, report_quarter);
         """)
         conn.commit()
-        logger.info(
+        logging.info(
             "cusip_quarterly_filings_counts materialized view and index created."
         )
 
         # Create company_cusip_lookups materialized view
-        logger.info("Creating company_cusip_lookups materialized view...")
+        logging.info("Creating company_cusip_lookups materialized view...")
         cur.execute("""
             CREATE MATERIALIZED VIEW IF NOT EXISTS company_cusip_lookups AS 
             WITH holding_counts AS (
@@ -437,11 +527,10 @@ def create_views():
                     aggregate_holdings.cusip,
                     aggregate_holdings.nameofissuer,
                     aggregate_holdings.titleofclass,
-                    aggregate_holdings.sshprnam,
                     aggregate_holdings.sshprnamttype,
                     COUNT(*) AS holdings_count
                 FROM aggregate_holdings
-                GROUP BY aggregate_holdings.cusip, aggregate_holdings.nameofissuer, 
+                GROUP BY aggregate_holdings.cusip, aggregate_holdings.nameofissuer,
                          aggregate_holdings.titleofclass, aggregate_holdings.sshprnamttype
             ),
             most_common AS (
@@ -469,10 +558,10 @@ def create_views():
             CREATE INDEX IF NOT EXISTS idx_company_cusip_lookups_on_issuer_name ON company_cusip_lookups USING gin (nameofissuer gin_trgm_ops);
         """)
         conn.commit()
-        logger.info("company_cusip_lookups materialized view and indices created.")
+        logging.info("company_cusip_lookups materialized view and indices created.")
 
     except psycopg2.Error as e:
-        logger.error(f"Error creating materialized views: {str(e)}")
+        logging.error(f"Error creating materialized views: {str(e)}")
         conn.rollback()
         raise
     finally:
@@ -492,18 +581,19 @@ def refresh_views():
         )
         cur = conn.cursor()
 
-        logger.info("Refreshing materialized views...")
+        logging.info("Refreshing materialized views...")
         cur.execute("""
+            REFRESH MATERIALIZED VIEW median_value_per_share;
             REFRESH MATERIALIZED VIEW aggregate_holdings;
             REFRESH MATERIALIZED VIEW filers;
             REFRESH MATERIALIZED VIEW cusip_quarterly_filings_counts;
             REFRESH MATERIALIZED VIEW company_cusip_lookups;
         """)
         conn.commit()
-        logger.info("All materialized views refreshed.")
+        logging.info("All materialized views refreshed.")
 
     except psycopg2.Error as e:
-        logger.error(f"Error refreshing materialized views: {str(e)}")
+        logging.error(f"Error refreshing materialized views: {str(e)}")
         conn.rollback()
         raise
     finally:

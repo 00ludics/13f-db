@@ -1,12 +1,19 @@
-import logging
 import os
 from datetime import datetime
 
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
 # Database configuration
-DB_NAME = "13F_DB"
-DB_USER = "USER"
-DB_PASSWORD = "PASSWORD"
-DB_HOST = "localhost"
+DB_NAME = os.getenv("DB_NAME")
+DB_USER = os.getenv("DB_USER")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
+DB_HOST = os.getenv("DB_HOST")
+
+# User-Agent configuration
+USER_AGENT = os.getenv("USER_AGENT")
 
 # Directory setup
 DATA_DIR = "data"
@@ -30,7 +37,7 @@ STRUCTURED_DATA_URL = (
 FTD_BASE_URL = "https://www.sec.gov"
 FTD_URL = "https://www.sec.gov/data-research/sec-markets-data/fails-deliver-data"
 HEADERS = {
-    "User-Agent": "Your Name youremail@email.com",
+    "User-Agent": USER_AGENT,
     "Accept-Encoding": "gzip, deflate",
     "Host": "www.sec.gov",
 }
@@ -46,37 +53,3 @@ for directory in [
     FTD_DIR,
 ]:
     os.makedirs(directory, exist_ok=True)
-
-
-# Global logger
-logger = None
-
-
-def setup_logging():
-    """
-    Set up logging for the application.
-
-    Returns:
-        logging.Logger: The configured logger.
-    """
-    global logger
-    logger = logging.getLogger("13f_db")
-    logger.setLevel(logging.INFO)
-
-    # Create a formatter
-    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-
-    # Check if a file handler already exists
-    if not any(isinstance(handler, logging.FileHandler) for handler in logger.handlers):
-        # Create a file handler
-        current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
-        log_filename = f"13f_db_{current_time}.log"
-        file_handler = logging.FileHandler(os.path.join(LOG_DIR, log_filename))
-        file_handler.setLevel(logging.INFO)
-        file_handler.setFormatter(formatter)
-        logger.addHandler(file_handler)
-
-    return logger
-
-
-logger = setup_logging()

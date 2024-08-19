@@ -28,7 +28,6 @@ from config import (
     INDIVIDUAL_FILINGS_DIR,
     PROGRESS_DIR,
     STRUCTURED_DATA_DIR,
-    logger,
 )
 
 
@@ -36,7 +35,7 @@ class ProgressTracker:
     """Tracks processing progress for both structured data and individual filings."""
 
     def __init__(
-        self, filename: str = os.path.join(PROGRESS_DIR, "process_progress.json")
+        self, filename: str = os.path.join(PROGRESS_DIR, "processing_progress.json")
     ):
         """
         Initialize the ProgressTracker.
@@ -188,7 +187,7 @@ def parse_xml_filing(file_path):
 
     xml_sections = re.findall(r"<XML>(.*?)</XML>", content, re.DOTALL)
     if len(xml_sections) < 2:
-        logger.error(f"Could not find both XML sections in {file_path}")
+        logging.error(f"Could not find both XML sections in {file_path}")
         return None, []
 
     primary_doc = ET.fromstring(xml_sections[0].strip())
@@ -201,11 +200,16 @@ def parse_xml_filing(file_path):
 
     other_managers = [
         {
-            "cik": safe_find(om, "ns:cik", ns),
-            "form13FFileNumber": safe_find(om, "ns:form13FFileNumber", ns),
-            "name": safe_find(om, "ns:name", ns),
+            "sequenceNumber": safe_find(om, "ns:sequenceNumber", ns),
+            "cik": safe_find(om, "ns:otherManager/ns:cik", ns),
+            "form13FFileNumber": safe_find(
+                om, "ns:otherManager/ns:form13FFileNumber", ns
+            ),
+            "crdNumber": safe_find(om, "ns:otherManager/ns:crdNumber", ns),
+            "secFileNumber": safe_find(om, "ns:otherManager/ns:secFileNumber", ns),
+            "name": safe_find(om, "ns:otherManager/ns:name", ns),
         }
-        for om in primary_doc.findall(".//ns:otherManagersInfo2/ns:otherManager", ns)
+        for om in primary_doc.findall(".//ns:otherManagers2Info/ns:otherManager2", ns)
     ]
 
     filing_data = {
@@ -385,9 +389,12 @@ def process_structured_data(
             pl.col("ACCESSION_NUMBER")
             .map_elements(
                 lambda accession_number: json.dumps(
-                    othermanager2_df.filter(
-                        pl.col("ACCESSION_NUMBER") == accession_number
-                    ).to_dicts()
+                    [
+                        {k: v for k, v in row.items() if k != "ACCESSION_NUMBER"}
+                        for row in othermanager2_df.filter(
+                            pl.col("ACCESSION_NUMBER") == accession_number
+                        ).to_dicts()
+                    ]
                 ),
                 return_dtype=pl.Utf8,
             )
@@ -507,12 +514,12 @@ def process_individual_filing(
     """
     conn = None
     cur = None
-    # logger.info(f"Processing file: {file_path}")
+    # logging.info(f"Processing file: {file_path}")
     try:
         filing_data, holdings = parse_xml_filing(file_path)
 
         if filing_data is None:
-            logger.error(f"Failed to parse XML file: {file_path}")
+            logging.error(f"Failed to parse XML file: {file_path}")
             return
 
         conn = psycopg2.connect(dbname=DB_NAME, user=DB_USER, password=DB_PASSWORD)
@@ -569,19 +576,19 @@ def process_individual_filing(
             conn.commit()
             year, quarter = os.path.basename(os.path.dirname(file_path)).split("_")
             filename = os.path.basename(file_path)
-            logger.info(f"Processed XML file: {file_path}")
+            logging.info(f"Processed XML file: {file_path}")
             progress_queue.put(
                 ("individual_filings", file_path, year, quarter, filename)
             )
         except Exception as e:
-            logger.error(f"Error processing XML file {file_path}: {str(e)}")
+            logging.error(f"Error processing XML file {file_path}: {str(e)}")
             conn.rollback()
         finally:
             cur.close()
             conn.close()
 
     except Exception as e:
-        logger.error(f"Error processing XML file {file_path}: {str(e)}")
+        logging.error(f"Error processing XML file {file_path}: {str(e)}")
 
 
 def process_13f_data(quarters: list[tuple[int, int]]) -> None:
@@ -726,7 +733,7 @@ def post_process_data():
 
     try:
         # 1. Remove filings before 2014
-        logger.info("Removing filings before 2014...")
+        logging.info("Removing filings before 2014...")
         cur.execute(
             """
             DELETE FROM holdings
@@ -740,10 +747,10 @@ def post_process_data():
             "DELETE FROM filings WHERE EXTRACT(YEAR FROM periodofreport) < 2014"
         )
         conn.commit()
-        logger.info("Filings before 2014 removed.")
+        logging.info("Filings before 2014 removed.")
 
         # 2. Remove 13F-NT and 13F-NT/A filings
-        logger.info("Removing 13F-NT and 13F-NT/A filings...")
+        logging.info("Removing 13F-NT and 13F-NT/A filings...")
         cur.execute(
             """
             DELETE FROM holdings
@@ -757,22 +764,10 @@ def post_process_data():
             "DELETE FROM filings WHERE submissiontype IN ('13F-NT', '13F-NT/A')"
         )
         conn.commit()
-        logger.info("13F-NT and 13F-NT/A filings removed.")
+        logging.info("13F-NT and 13F-NT/A filings removed.")
 
-        # 3. Pad CIKs with leading zeros
-        logger.info("Padding CIKs with leading zeros...")
-        cur.execute(
-            """
-            UPDATE filings
-            SET cik = LPAD(cik, 10, '0')
-            WHERE LENGTH(cik) < 10
-            """
-        )
-        conn.commit()
-        logger.info("CIKs padded with leading zeros.")
-
-        # 4. Handle inconsistent isamendment and amendmenttype
-        logger.info("Handling inconsistent isamendment and amendmenttype...")
+        # 3. Handle inconsistent isamendment and amendmenttype
+        logging.info("Handling inconsistent isamendment and amendmenttype...")
         cur.execute(
             """
             UPDATE filings
@@ -792,138 +787,144 @@ def post_process_data():
             """
         )
         conn.commit()
-        logger.info("Inconsistent isamendment and amendmenttype handled.")
+        logging.info("Inconsistent isamendment and amendmenttype handled.")
 
-        # 5. Handle amendments
-        logger.info("Handling amendments...")
+        # 4. Handle amendments
+        logging.info("Handling amendments...")
         cur.execute("""
-            CREATE TEMPORARY TABLE filing_summary AS
-            SELECT 
-                cik, 
-                periodofreport,
-                MAX(CASE WHEN amendmenttype = 'RESTATEMENT' THEN filing_date END) AS latest_restatement_date,
-                MAX(CASE WHEN amendmenttype IS NULL THEN filing_date END) AS latest_original_date
-            FROM filings
-            GROUP BY cik, periodofreport;
+            ALTER TABLE filings ADD COLUMN IF NOT EXISTS restated_by BIGINT REFERENCES filings(id);
 
-            CREATE TEMPORARY TABLE filings_to_delete AS
-            SELECT f.id
-            FROM filings f
-            JOIN filing_summary fs ON f.cik = fs.cik AND f.periodofreport = fs.periodofreport
-            WHERE 
-                (f.amendmenttype = 'RESTATEMENT' AND f.filing_date < fs.latest_restatement_date)
-                OR (f.amendmenttype IS NULL AND fs.latest_restatement_date IS NOT NULL)
-                OR (f.amendmenttype IS NULL AND f.filing_date < fs.latest_original_date);
+            UPDATE filings SET restated_by = NULL;
 
-            DELETE FROM holdings
-            WHERE filing_id IN (SELECT id FROM filings_to_delete);
-
-            DELETE FROM filings
-            WHERE id IN (SELECT id FROM filings_to_delete);
-
-            DROP TABLE filing_summary;
-            DROP TABLE filings_to_delete;
+            WITH latest_filings AS (
+                SELECT 
+                    cik, 
+                    periodofreport,
+                    MAX(filing_date) AS latest_filing_date
+                FROM filings
+                WHERE amendmenttype IS NULL OR amendmenttype = 'RESTATEMENT'
+                GROUP BY cik, periodofreport
+            )
+            UPDATE filings f
+            SET restated_by = lf.latest_filing_id
+            FROM (
+                SELECT 
+                    lf.cik,
+                    lf.periodofreport,
+                    lf.latest_filing_date,
+                    f2.id AS latest_filing_id
+                FROM latest_filings lf
+                JOIN filings f2 ON f2.cik = lf.cik 
+                    AND f2.periodofreport = lf.periodofreport 
+                    AND f2.filing_date = lf.latest_filing_date
+            ) lf
+            WHERE f.cik = lf.cik
+            AND f.periodofreport = lf.periodofreport
+            AND f.filing_date < lf.latest_filing_date
+            AND (f.amendmenttype IS NULL OR f.amendmenttype = 'RESTATEMENT')
+            AND f.id != lf.latest_filing_id;
         """)
         conn.commit()
-        logger.info("Handled amendments.")
-
-        # 6. Remove option holdings
-        logger.info("Removing option holdings...")
-        cur.execute("DELETE FROM holdings WHERE putcall IS NOT NULL")
-        conn.commit()
-        logger.info("Option holdings removed.")
-
-        # 7. Clean CUSIPs
-        logger.info("Cleaning CUSIPs...")
-        clean_cusips(conn, cur)
-        logger.info("CUSIPs cleaned.")
+        logging.info("Handled amendments.")
 
     except Exception as e:
-        logger.error(f"Error during post-processing: {str(e)}")
+        logging.error(f"Error during post-processing: {str(e)}")
         conn.rollback()
     finally:
         cur.close()
         conn.close()
 
+    logging.info("Post-processing completed.")
 
-def clean_cusips(conn, cur):
+
+def clean_cusips():
     """
-    Clean and correct CUSIPs in the holdings table.
+    Cleans and fixes CUSIPs in the holdings table.
 
-    This function performs the following operations:
-    1. Fixes misplaced CUSIPs in titleofclass and nameofissuer columns.
-    2. Tries naive fixes for short CUSIPs, left pads remaining to 9 chars.
-
-    Args:
-        conn (psycopg2.connection): The database connection object.
-        cur (psycopg2.cursor): The database cursor object.
+    This function performs three main tasks:
+    1. Swaps CUSIPs mistakenly placed in the titleofclass column
+    2. Swaps CUSIPs mistakenly placed in the nameofissuer column
+    3. Handles short CUSIPs by padding or applying checksum fixes
     """
+    conn = psycopg2.connect(dbname=DB_NAME, user=DB_USER, password=DB_PASSWORD)
+    cur = conn.cursor()
+
     try:
         # Load FTD CUSIPs
         ftd_cusips = set(
-            pl.read_csv(os.path.join(FTD_DIR, "ftd_data.csv"))
+            pl.read_csv(os.path.join(FTD_DIR, "ftd_data.csv"), infer_schema=False)
             .select(pl.col("cusip").str.strip_chars().str.to_uppercase())
             .drop_nulls()
             .to_series()
         )
-        logger.info(f"Loaded {len(ftd_cusips)} unique CUSIPs from FTD data")
+        logging.info(f"Loaded {len(ftd_cusips)} unique CUSIPs from FTD data")
 
-        # Fetch all holdings
-        query = """
-            SELECT DISTINCT cusip, titleofclass, nameofissuer 
-            FROM holdings
-        """
-        df = pl.read_database(query, connection=conn)
-        df = df.with_columns(pl.all().str.strip_chars().str.to_uppercase())
-        logger.info(f"Fetched {len(df)} unique holdings records")
-
-        # Identify misplaced CUSIPs
-        cusips_in_titleofclass = df.filter(pl.col("titleofclass").is_in(ftd_cusips))
-        cusips_in_nameofissuer = df.filter(pl.col("nameofissuer").is_in(ftd_cusips))
-        logger.info(f"Found {len(cusips_in_titleofclass)} CUSIPs in titleofclass")
-        logger.info(f"Found {len(cusips_in_nameofissuer)} CUSIPs in nameofissuer")
-
-        # Fix CUSIPs in titleofclass
-        cur.execute(
-            """
-            UPDATE holdings
-            SET 
-                cusip = titleofclass,
-                titleofclass = cusip
-            WHERE titleofclass IN %s
-        """,
-            (tuple(cusips_in_titleofclass["titleofclass"]),),
+        # Create temporary table for FTD CUSIPs
+        cur.execute("CREATE TEMPORARY TABLE ftd_cusips (cusip TEXT PRIMARY KEY)")
+        cur.executemany(
+            "INSERT INTO ftd_cusips (cusip) VALUES (%s)",
+            [(cusip,) for cusip in ftd_cusips],
         )
-        logger.info(f"Fixed {cur.rowcount} CUSIPs mislabeled in titleofclass")
 
-        # Fix CUSIPs in nameofissuer
-        cur.execute(
-            """
-            UPDATE holdings
+        # 1. Swap CUSIPs in titleofclass
+        logging.info("Swap CUSIPs in titleofclass...")
+        cur.execute("""
+            WITH to_update AS (
+                SELECT h.id, h.cusip, h.titleofclass
+                FROM holdings h
+                LEFT JOIN ftd_cusips f ON h.cusip = f.cusip
+                JOIN ftd_cusips f2 ON h.titleofclass = f2.cusip
+                WHERE f.cusip IS NULL
+            )
+            UPDATE holdings h
             SET 
-                cusip = nameofissuer,
-                nameofissuer = titleofclass,
-                titleofclass = cusip
-            WHERE nameofissuer IN %s
-        """,
-            (tuple(cusips_in_nameofissuer["nameofissuer"]),),
-        )
-        logger.info(f"Fixed {cur.rowcount} CUSIPs mislabeled in nameofissuer")
+                cusip = tu.titleofclass,
+                titleofclass = tu.cusip
+            FROM to_update tu
+            WHERE h.id = tu.id
+            RETURNING h.id
+        """)
 
+        updated_rows = cur.fetchall()
+        conn.commit()
+        logging.info(f"Fixed {len(updated_rows)} rows where CUSIP was in titleofclass")
+
+        # 2. Swap CUSIPs in nameofissuer
+        logging.info("Swap CUSIPs in nameofissuer...")
+        cur.execute("""
+            WITH to_update AS (
+                SELECT h.id, h.cusip, h.titleofclass, h.nameofissuer
+                FROM holdings h
+                LEFT JOIN ftd_cusips f ON h.cusip = f.cusip
+                JOIN ftd_cusips f2 ON h.nameofissuer = f2.cusip
+                WHERE f.cusip IS NULL
+            )
+            UPDATE holdings h
+            SET 
+                cusip = tu.nameofissuer,
+                nameofissuer = tu.titleofclass
+            FROM to_update tu
+            WHERE h.id = tu.id
+            RETURNING h.id
+        """)
+
+        updated_rows = cur.fetchall()
+        conn.commit()
+        logging.info(f"Fixed {len(updated_rows)} rows where CUSIP was in nameofissuer")
+
+        # 3. Handle short CUSIPs
+        logging.info("Handling short CUSIPs...")
+
+        # Helper functions (same as in your original function)
         def compute_check_digit(cusip):
             if len(cusip) != 8 or not cusip.isalnum():
-                raise ValueError("CUSIP must be length 8 and alphanumeric characters")
-
+                return None
             values = [
                 int(c) if c.isdigit() else (ord(c) - ord("A") + 10) for c in cusip
             ]
-
-            total = 0
-            for i, value in enumerate(values):
-                if i % 2 == 1:
-                    value *= 2
-                total += sum(divmod(value, 10))
-
+            total = sum(
+                (value * 2 if i % 2 else value) for i, value in enumerate(values)
+            )
             check_digit = (10 - (total % 10)) % 10
             return str(check_digit)
 
@@ -933,38 +934,31 @@ def clean_cusips(conn, cur):
                 return full_cusip if full_cusip in ftd_cusips else None
             elif len(cusip) == 7:
                 for char in string.ascii_uppercase + string.digits:
-                    # Try left padding
                     left_padded = char + cusip
                     check_digit = compute_check_digit(left_padded)
-                    full_cusip = left_padded + check_digit
-                    if full_cusip in ftd_cusips:
-                        return full_cusip
-
-                # Try right padding
+                    if check_digit:
+                        full_cusip = left_padded + check_digit
+                        if full_cusip in ftd_cusips:
+                            return full_cusip
                 right_padded = cusip + char
                 check_digit = compute_check_digit(right_padded)
-                full_cusip = right_padded + check_digit
-                if full_cusip in ftd_cusips:
-                    return full_cusip
+                if check_digit:
+                    full_cusip = right_padded + check_digit
+                    if full_cusip in ftd_cusips:
+                        return full_cusip
             return None
 
-        # Handle short CUSIPs
-        df_remaining = df.filter(
-            ~pl.col("titleofclass").is_in(ftd_cusips)
-            & ~pl.col("nameofissuer").is_in(ftd_cusips)
-        )
-        df_cusips = (
-            df_remaining.with_columns(
-                pl.col("cusip")
-                .map_elements(lambda x: len(x), return_dtype=pl.Int8)
-                .alias("cusip_length")
-            )
-            .filter(pl.col("cusip_length") < 9)
-            .select("cusip")
-            .unique()
+        query = """
+            SELECT DISTINCT cusip
+            FROM holdings
+            WHERE LENGTH(cusip) < 9
+        """
+        df_cusips = pl.read_database(query, connection=conn)
+        df_cusips = df_cusips.with_columns(
+            pl.all().str.strip_chars().str.to_uppercase()
         )
 
-        # 1. Check left padding
+        # 3a. Check left padding
         left_padded = df_cusips.with_columns(
             pl.col("cusip").str.zfill(9).alias("fixed_cusip")
         )
@@ -973,7 +967,7 @@ def clean_cusips(conn, cur):
             ~pl.col("fixed_cusip").is_in(ftd_cusips)
         ).drop("fixed_cusip")
 
-        # 2. Check right padding
+        # 3b. Check right padding
         right_padded = df_cusips_remaining.with_columns(
             pl.col("cusip").str.pad_end(9, "0").alias("fixed_cusip")
         )
@@ -982,7 +976,7 @@ def clean_cusips(conn, cur):
             ~pl.col("fixed_cusip").is_in(ftd_cusips)
         ).drop("fixed_cusip")
 
-        # 3. Apply checksum fix
+        # 3c. Apply checksum fix
         df_cusips_remaining = df_cusips_remaining.with_columns(
             pl.col("cusip")
             .map_elements(
@@ -997,7 +991,7 @@ def clean_cusips(conn, cur):
             pl.col("fixed_cusip").is_null()
         ).drop("fixed_cusip")
 
-        # lpad remaining to 9 chars
+        # 3d. lpad remaining to 9 chars
         df_cusips_remaining = df_cusips_remaining.with_columns(
             pl.col("cusip").str.zfill(9).alias("fixed_cusip")
         )
@@ -1008,27 +1002,44 @@ def clean_cusips(conn, cur):
         cusip_fixes = dict(zip(all_fixes["cusip"], all_fixes["fixed_cusip"]))
 
         # Fix / lpad short CUSIPs
-        cur.execute(
-            """
+        update_query = """
             UPDATE holdings
             SET cusip = CASE cusip 
                 {}
                 ELSE cusip 
             END
             WHERE cusip IN %s
+            RETURNING id
         """.format(
-                "\n                ".join(
-                    f"WHEN '{old}' THEN '{new}'" for old, new in cusip_fixes.items()
-                )
-            ),
-            (tuple(cusip_fixes.keys()),),
+            "\n                ".join(
+                f"WHEN '{old}' THEN '{new}'" for old, new in cusip_fixes.items()
+            )
         )
 
-        logger.info(f"Fixed {cur.rowcount} short CUSIPs")
+        cur.execute(update_query, (tuple(cusip_fixes.keys()),))
 
+        updated_rows = cur.fetchall()
         conn.commit()
-        logger.info("CUSIP cleaning completed successfully")
+        logging.info(f"Fixed {len(updated_rows)} short CUSIPs")
+
+        # Final verification
+        cur.execute("""
+            SELECT COUNT(DISTINCT h.id) 
+            FROM holdings h
+            LEFT JOIN ftd_cusips f ON h.cusip = f.cusip
+            WHERE f.cusip IS NULL
+              AND (h.titleofclass IN (SELECT cusip FROM ftd_cusips)
+                   OR h.nameofissuer IN (SELECT cusip FROM ftd_cusips))
+        """)
+
+        final_misplaced = cur.fetchone()[0]
+        logging.info(
+            f"After all updates, {final_misplaced} distinct rows still have misplaced CUSIPs"
+        )
+
     except Exception as e:
+        logging.error(f"Error during CUSIP cleaning: {str(e)}")
         conn.rollback()
-        logger.error(f"Error during CUSIP cleaning: {str(e)}")
-        raise
+    finally:
+        cur.close()
+        conn.close()
