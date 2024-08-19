@@ -1,0 +1,58 @@
+<!-- manager.html -->
+{% extends "base.html" %}
+
+{% block title %}{{ manager.filingmanager_name }} - 13F DB{% endblock %}
+
+{% block content %}
+<article>
+    <h1 class="text-2xl mb-2">{{ manager.filingmanager_name }}</h1>
+    <section class="info-section">
+        <div class="info-item">
+            <span class="info-label">CIK:</span>
+            <span class="info-value">{{ manager.cik }}</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Location:</span>
+            <span class="info-value">{{ manager.filingmanager_city }}, {{ manager.filingmanager_stateorcountry }}</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Total Filings:</span>
+            <span class="info-value">{{ manager.filings_count }}</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Most Recent Filing:</span>
+            <span class="info-value">{{ filings[0].report_period if filings else 'N/A' }} ({{ filings[0].form_type if filings else 'N/A' }})</span>
+        </div>
+    </section>
+
+    <h2 class="text-xl mb-4">Filings</h2>
+    <div class="overflow-x-auto">
+        <table class="sortable">
+            <thead>
+                <tr>
+                    <th>Report Period</th>
+                    <th>Form Type</th>
+                    <th>Total Entries</th>
+                    <th>Total Value</th>
+                    <th>Filing Date</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for filing in filings %}
+                <tr>
+                    <td>{{ filing.report_period }}</td>
+                    <td>{{ filing.form_type }}</td>
+                    <td>{{ filing.tableentrytotal }}</td>
+                    <td>${{ "{:,.0f}".format(filing.tablevaluetotal) }}</td>
+                    <td>{{ filing.filing_date.strftime('%Y-%m-%d') }}</td>
+                    <td>
+                        <a href="{{ url_for('filing', cik=manager.cik, period=filing.periodofreport.strftime('%Y-%m-%d')) }}" class="text-blue-600 hover:underline">View Details</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</article>
+{% endblock %}

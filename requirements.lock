@@ -18,15 +18,26 @@ asyncio==3.4.3
 attrs==24.2.0
     # via aiohttp
 beautifulsoup4==4.12.3
+blinker==1.8.2
+    # via flask
 click==8.1.7
+    # via flask
     # via typer
+flask==3.0.3
 frozenlist==1.4.1
     # via aiohttp
     # via aiosignal
 idna==3.7
     # via yarl
+itsdangerous==2.2.0
+    # via flask
+jinja2==3.1.4
+    # via flask
 markdown-it-py==3.0.0
     # via rich
+markupsafe==2.1.5
+    # via jinja2
+    # via werkzeug
 mdurl==0.1.2
     # via markdown-it-py
 multidict==6.0.5
@@ -46,5 +57,7 @@ soupsieve==2.5
 typer==0.12.3
 typing-extensions==4.12.2
     # via typer
+werkzeug==3.0.3
+    # via flask
 yarl==1.9.4
     # via aiohttp

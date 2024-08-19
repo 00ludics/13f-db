@@ -1,0 +1,52 @@
+<!-- security_holders.html -->
+{% extends "base.html" %}
+
+{% block title %}{{ security.nameofissuer }} - Holders ({{ year }} Q{{ quarter }}) - 13F DB{% endblock %}
+
+{% block content %}
+<article>
+    <h1 class="text-2xl mb-2">{{ security.nameofissuer }}</h1>
+    <section class="info-section">
+        <div class="info-item">
+            <span class="info-label">CUSIP:</span>
+            <span class="info-value">{{ security.cusip }}</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Period:</span>
+            <span class="info-value">{{ year }} Q{{ quarter }}</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Total Holders:</span>
+            <span class="info-value">{{ total_holders }}</span>
+        </div>
+    </section>
+
+    <h2 class="text-xl mb-4">Holders</h2>
+    <div class="overflow-x-auto">
+        <table class="sortable">
+            <thead>
+                <tr>
+                    <th>Manager Name</th>
+                    <th>CIK</th>
+                    <th>Value ($1000)</th>
+                    <th>Shares</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for holder in holders %}
+                <tr>
+                    <td>
+                        <a href="{{ url_for('manager', cik=holder.cik) }}" class="text-blue-600 hover:underline">
+                            {{ holder.filingmanager_name }}
+                        </a>
+                    </td>
+                    <td>{{ holder.cik }}</td>
+                    <td>{{ "{:,.0f}".format(holder.value) }}</td>
+                    <td>{{ "{:,.0f}".format(holder.sshprnamt) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</article>
+{% endblock %}

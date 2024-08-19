@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}13F DB{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/sorttable@1.0.2/sorttable.min.js"></script>
+    <style>
+        body {
+            font-family: 'Palatino', 'Georgia', serif;
+            background-color: #fffff8;
+            color: #111;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 55em;
+            margin: 0 auto;
+            padding: 0 1em;
+        }
+        .search-container {
+            max-width: 40em;
+            margin: 2em auto;
+        }
+        .search-input {
+            width: 100%;
+            padding: 0.5em 0.75em;
+            font-size: 1.1em;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            transition: all 0.3s;
+        }
+        .search-input:focus {
+            outline: none;
+            border-color: #555;
+            box-shadow: 0 0 0 2px rgba(85, 85, 85, 0.2);
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 1em;
+        }
+        th, td {
+            border-bottom: 1px solid #ddd;
+            padding: 0.5em;
+            text-align: left;
+        }
+        th {
+            font-weight: bold;
+            background-color: #f9f9f2;
+        }
+        .info-section {
+            background-color: #f9f9f2;
+            border: 1px solid #e1e1d8;
+            padding: 1em;
+            margin-bottom: 1.5em;
+            border-radius: 4px;
+        }
+        .home-button {
+            cursor: pointer;
+        }
+        .info-label {
+            font-weight: bold;
+            margin-right: 0.5em;
+        }
+        .info-value {
+            font-style: italic;
+        }
+        .info-item {
+            margin-bottom: 0.5em;
+        }
+        table.sortable th {
+            cursor: pointer;
+        }
+        table.sortable th:after {
+            content: ' \25B4\25BE';
+            font-size: 0.8em;
+            color: #999;
+        }
+        h2 {
+            border-bottom: 2px solid #e1e1d8;
+            padding-bottom: 0.3em;
+            margin-bottom: 0.5em;
+        }
+        .header-divider {
+            border-bottom: 2px solid #e1e1d8;
+            margin-bottom: 1em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="py-4">
+            <h1 id="homeButton" class="text-3xl font-normal home-button" data-home-url="{{ url_for('index') }}">
+                13F DB
+            </h1>
+        </header>
+        <div class="header-divider"></div>
+        <main>
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+    <script>
+        document.getElementById('homeButton').addEventListener('click', function() {
+            window.location.href = this.getAttribute('data-home-url');
+        });
+    </script>
+</body>
+</html>

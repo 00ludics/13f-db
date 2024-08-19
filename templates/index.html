@@ -1,0 +1,57 @@
+<!-- index.html -->
+{% extends "base.html" %}
+
+{% block content %}
+<div x-data="searchComponent()" class="search-container">
+    <div class="relative">
+        <input 
+            type="text" 
+            x-model="query" 
+            @input.debounce.300ms="searchResults"
+            placeholder="Search for managers or securities..." 
+            class="search-input"
+        >
+        <div x-show="results.length > 0" class="absolute z-10 w-full bg-white border rounded mt-1 shadow-lg max-h-60 overflow-y-auto">
+            <template x-for="result in results" :key="result.id">
+                <a :href="result.type === 'manager' ? `/manager/${result.id}` : `/security/${result.id}`" 
+                   class="block p-3 hover:bg-gray-100 transition duration-150 ease-in-out">
+                    <div class="font-semibold" x-text="result.name"></div>
+                    <div class="text-sm text-gray-600">
+                        <span x-text="result.type"></span>
+                        <template x-if="result.type === 'manager'">
+                            <span x-text="` • ${result.location} • ${result.filings_count} filings`"></span>
+                        </template>
+                        <template x-if="result.type === 'security'">
+                            <span x-text="` • ${result.holdings_count} holders`"></span>
+                        </template>
+                    </div>
+                </a>
+            </template>
+        </div>
+    </div>
+</div>
+
+<script>
+function searchComponent() {
+    return {
+        query: '',
+        results: [],
+        searchResults() {
+            if (this.query.length < 2) {
+                this.results = [];
+                return;
+            }
+            fetch(`/search?query=${encodeURIComponent(this.query)}`)
+                .then(response => response.json())
+                .then(data => {
+                    this.results = data;
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    this.results = [];
+                });
+        }
+    }
+}
+</script>
+{% endblock %}

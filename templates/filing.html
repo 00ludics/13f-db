@@ -1,0 +1,58 @@
+<!-- filing.html -->
+{% extends "base.html" %}
+
+{% block title %}{{ filing.filingmanager_name }} - {{ filing.periodofreport.strftime('%Y-%m-%d') }} - 13F DB{% endblock %}
+
+{% block content %}
+<article>
+    <h1 class="text-2xl mb-2">{{ filing.filingmanager_name }} - {{ filing.periodofreport.strftime('%Y-%m-%d') }}</h1>
+    <section class="info-section">
+        <div class="info-item">
+            <span class="info-label">CIK:</span>
+            <span class="info-value">{{ filing.cik }}</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Filing Date:</span>
+            <span class="info-value">{{ filing.filing_date.strftime('%Y-%m-%d') }}</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Total Value:</span>
+            <span class="info-value">${{ "{:,.0f}".format(filing.tablevaluetotal) }}</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Total Entries:</span>
+            <span class="info-value">{{ filing.tableentrytotal }}</span>
+        </div>
+    </section>
+
+    <h2 class="text-xl mb-4">Holdings</h2>
+    <div class="overflow-x-auto">
+        <table class="sortable">
+            <thead>
+                <tr>
+                    <th>Name of Issuer</th>
+                    <th>CUSIP</th>
+                    <th>Title of Class</th>
+                    <th>Value ($1000)</th>
+                    <th>Shares</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for holding in holdings %}
+                <tr>
+                    <td>
+                        <a href="{{ url_for('security', cusip=holding.cusip) }}" class="text-blue-600 hover:underline">
+                            {{ holding.nameofissuer }}
+                        </a>
+                    </td>
+                    <td>{{ holding.cusip }}</td>
+                    <td>{{ holding.titleofclass }}</td>
+                    <td>{{ "{:,.0f}".format(holding.value) }}</td>
+                    <td>{{ "{:,.0f}".format(holding.sshprnamt) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</article>
+{% endblock %}

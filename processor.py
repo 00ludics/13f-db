@@ -728,10 +728,12 @@ def process_13f_data(quarters: list[tuple[int, int]]) -> None:
 
 def post_process_data():
     """Performs post-processing tasks on the data in the database."""
-    conn = psycopg2.connect(dbname=DB_NAME, user=DB_USER, password=DB_PASSWORD)
-    cur = conn.cursor()
-
+    conn = None
+    cur = None
     try:
+        conn = psycopg2.connect(dbname=DB_NAME, user=DB_USER, password=DB_PASSWORD)
+        cur = conn.cursor()
+
         # 1. Remove filings before 2014
         logging.info("Removing filings before 2014...")
         cur.execute(
@@ -846,10 +848,13 @@ def clean_cusips():
     2. Swaps CUSIPs mistakenly placed in the nameofissuer column
     3. Handles short CUSIPs by padding or applying checksum fixes
     """
-    conn = psycopg2.connect(dbname=DB_NAME, user=DB_USER, password=DB_PASSWORD)
-    cur = conn.cursor()
+    conn = None
+    cur = None
 
     try:
+        conn = psycopg2.connect(dbname=DB_NAME, user=DB_USER, password=DB_PASSWORD)
+        cur = conn.cursor()
+
         # Load FTD CUSIPs
         ftd_cusips = set(
             pl.read_csv(os.path.join(FTD_DIR, "ftd_data.csv"), infer_schema=False)
