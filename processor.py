@@ -213,7 +213,9 @@ def parse_xml_filing(file_path):
     ]
 
     filing_data = {
-        "accession_number": re.search(r"ACCESSION NUMBER:\s+(\S+)", content).group(1),
+        "accession_number": re.search(r"ACCESSION NUMBER:\s+(\S+)", content)
+        .group(1)
+        .replace("-", ""),
         "cik": safe_find(primary_doc, ".//ns:cik", ns).zfill(10),
         "filingmanager_name": safe_find(primary_doc, ".//ns:name", ns),
         "submissiontype": safe_find(primary_doc, ".//ns:submissionType", ns),
@@ -401,8 +403,13 @@ def process_structured_data(
             .alias("OTHER_MANAGERS"),
         )
 
+        # Remove dashes from ACCESSION_NUMBER
+        filings_df = filings_df.with_columns(
+            pl.col("ACCESSION_NUMBER").str.replace("-", "")
+        )
         infotable_df = infotable_df.with_columns(
             [
+                pl.col("ACCESSION_NUMBER").str.replace("-", ""),
                 pl.col("NAMEOFISSUER").str.strip_chars().str.to_uppercase(),
                 pl.col("TITLEOFCLASS").str.strip_chars().str.to_uppercase(),
                 pl.col("CUSIP").str.strip_chars().str.to_uppercase(),

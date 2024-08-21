@@ -229,21 +229,20 @@ def full_process(
     ),
 ):
     """Perform full process: reset, download, process, and postprocess."""
-    # if not confirm:
-    #     console.print(
-    #         "Warning: This action will permanently delete all data in the database.",
-    #         style="bold yellow",
-    #     )
-    #     confirmed = typer.confirm("Are you sure you want to proceed?")
-    #     if not confirmed:
-    #         console.print("Database reset cancelled.", style="bold red")
-    #         raise typer.Abort()
+    if not confirm:
+        console.print(
+            "Warning: This action will permanently delete all data in the database.",
+            style="bold yellow",
+        )
+        confirmed = typer.confirm("Are you sure you want to proceed?")
+        if not confirmed:
+            console.print("Database reset cancelled.", style="bold red")
+            raise typer.Abort()
 
-    # reset(confirm=True)
-    # download(start_date, end_date)
-    # process(start_date, end_date)
-    # postprocess()
-    post_process_data()
+    reset(confirm=True)
+    download(start_date, end_date)
+    process(start_date, end_date)
+    postprocess()
 
 
 @app.command("update")
