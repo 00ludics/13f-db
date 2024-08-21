@@ -1,58 +1,81 @@
-<!-- manager.html -->
+<!-- index.html -->
 {% extends "base.html" %}
 
-{% block title %}{{ manager.filingmanager_name }} - 13F DB{% endblock %}
+{% block title %}{{ manager.filingmanager_name }} - {{ security.nameofissuer }} - 13F DB{% endblock %}
 
 {% block content %}
 <article>
-    <h1 class="text-2xl mb-2">{{ manager.filingmanager_name }}</h1>
+    <h1 class="text-2xl mb-2">
+        <a href="{{ url_for('manager', cik=manager.cik) }}" class="text-blue-600 hover:underline">
+            {{ manager.filingmanager_name }}
+        </a>
+    </h1>
+    <h2 class="text-xl mb-4">
+        <a href="{{ url_for('security', cusip=security.cusip) }}" class="text-blue-600 hover:underline">
+            {{ security.nameofissuer }}
+        </a>
+    </h2>
     <div class="flex flex-col md:flex-row info-section">
         <div class="md:w-2/5">
             <div class="info-item">
-                <span class="info-label">CIK:</span>
-                <span class="info-value">{{ manager.cik }}</span>
+                <span class="info-label">CUSIP:</span>
+                <span class="info-value">{{ security.cusip }}</span>
             </div>
+            {% if security.symbol %}
             <div class="info-item">
-                <span class="info-label">Location:</span>
-                <span class="info-value">{{ manager.filingmanager_city }}, {{ manager.filingmanager_stateorcountry }}</span>
+                <span class="info-label">Symbol:</span>
+                <span class="info-value">{{ security.symbol }}</span>
             </div>
+            {% endif %}
             <div class="info-item">
-                <span class="info-label">Total Filings:</span>
-                <span class="info-value">{{ manager.filings_count }}</span>
+                <span class="info-label">Title of Class:</span>
+                <span class="info-value">{{ security.titleofclass }}</span>
             </div>
+            {% if security.exchange %}
             <div class="info-item">
-                <span class="info-label">Most Recent Filing:</span>
-                <span class="info-value">{{ filings[0].report_period if filings else 'N/A' }} ({{ filings[0].form_type if filings else 'N/A' }})</span>
+                <span class="info-label">Exchange:</span>
+                <span class="info-value">{{ security.exchange }}</span>
             </div>
+            {% endif %}
+            {% if security.sector %}
+            <div class="info-item">
+                <span class="info-label">Sector:</span>
+                <span class="info-value">{{ security.sector }}</span>
+            </div>
+            {% endif %}
+            {% if security.industry %}
+            <div class="info-item">
+                <span class="info-label">Industry:</span>
+                <span class="info-value">{{ security.industry }}</span>
+            </div>
+            {% endif %}
         </div>
         <div class="md:w-3/5 mt-4 md:mt-0" style="height: 300px;">
             <canvas id="holdingsChart"></canvas>
         </div>
     </div>
 
-    <h2 class="text-xl mb-4 mt-8">Filings</h2>
+    <h2 class="text-xl mb-4 mt-8">Quarterly Holdings</h2>
     <div class="overflow-x-auto">
         <table class="sortable">
             <thead>
                 <tr>
                     <th>Report Period</th>
-                    <th>Form Type</th>
-                    <th>Total Entries</th>
-                    <th>Total Value</th>
-                    <th>Filing Date</th>
+                    <th>Value</th>
+                    <th>Shares</th>
+                    <th>Percentage</th>
                     <th></th>
                 </tr>
             </thead>
             <tbody>
-                {% for filing in filings %}
+                {% for holding in holdings %}
                 <tr>
-                    <td>{{ filing.report_period }}</td>
-                    <td>{{ filing.form_type }}</td>
-                    <td>{{ filing.tableentrytotal }}</td>
-                    <td>${{ "{:,.0f}".format(filing.tablevaluetotal) }}</td>
-                    <td>{{ filing.filing_date.strftime('%Y-%m-%d') }}</td>
+                    <td>{{ holding.report_period }}</td>
+                    <td>{{ "${:,.0f}".format(holding.value) }}</td>
+                    <td>{{ "{:,.0f}".format(holding.sshprnamt) }}</td>
+                    <td>{{ "{:.2f}%".format(holding.percentage) }}</td>
                     <td>
-                        <a href="{{ url_for('filing', cik=manager.cik, period_accession=filing.periodofreport.strftime('%Y-%m-%d') + '-' + filing.accession_number) }}" class="text-blue-600 hover:underline">View Details</a>
+                        <a href="{{ url_for('filing', cik=manager.cik, period_accession=holding.periodofreport + '-' + holding.accession_number) }}" class="text-blue-600 hover:underline">View Filing</a>
                     </td>
                 </tr>
                 {% endfor %}
@@ -108,7 +131,7 @@
                     beginAtZero: true,
                     ticks: {
                         callback: function(value) {
-                            return '$' + value.toFixed(0) + 'B';
+                            return '$' + value.toFixed(1) + 'B';
                         }
                     },
                     title: {

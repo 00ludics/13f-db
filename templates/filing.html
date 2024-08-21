@@ -1,11 +1,13 @@
 <!-- filing.html -->
 {% extends "base.html" %}
-
 {% block title %}{{ filing.filingmanager_name }} - {{ filing.periodofreport.strftime('%Y-%m-%d') }} - 13F DB{% endblock %}
-
 {% block content %}
 <article>
-    <h1 class="text-2xl mb-2">{{ filing.filingmanager_name }} - {{ filing.periodofreport.strftime('%Y-%m-%d') }}</h1>
+    <h1 class="text-2xl mb-2">
+        <a href="{{ url_for('manager', cik=filing.cik) }}" class="text-blue-600 hover:underline">
+            {{ filing.filingmanager_name }}
+        </a> - {{ filing.periodofreport.strftime('%Y-%m-%d') }}
+    </h1>
     <section class="info-section">
         <div class="info-item">
             <span class="info-label">CIK:</span>
@@ -24,31 +26,37 @@
             <span class="info-value">{{ filing.tableentrytotal }}</span>
         </div>
     </section>
-
     <h2 class="text-xl mb-4">Holdings</h2>
     <div class="overflow-x-auto">
         <table class="sortable">
             <thead>
                 <tr>
                     <th>Name of Issuer</th>
-                    <th>CUSIP</th>
+                    <th>CUSIP / Symbol</th>
                     <th>Title of Class</th>
-                    <th>Value ($1000)</th>
+                    <th>Value</th>
                     <th>Shares</th>
+                    <th>Percentage</th>
                 </tr>
             </thead>
             <tbody>
                 {% for holding in holdings %}
                 <tr>
                     <td>
-                        <a href="{{ url_for('security', cusip=holding.cusip) }}" class="text-blue-600 hover:underline">
+                        <a href="{{ url_for('security_manager', cik=filing.cik, cusip=holding.cusip) }}" class="text-blue-600 hover:underline">
                             {{ holding.nameofissuer }}
                         </a>
                     </td>
-                    <td>{{ holding.cusip }}</td>
+                    <td>
+                        {{ holding.cusip }}
+                        {% if holding.symbol %}
+                        <br><span class="text-sm text-gray-600">({{ holding.symbol }})</span>
+                        {% endif %}
+                    </td>
                     <td>{{ holding.titleofclass }}</td>
-                    <td>{{ "{:,.0f}".format(holding.value) }}</td>
+                    <td>{{ "${:,.0f}".format(holding.value) }}</td>
                     <td>{{ "{:,.0f}".format(holding.sshprnamt) }}</td>
+                    <td>{{ "{:.2f}%".format(holding.percentage) }}</td>
                 </tr>
                 {% endfor %}
             </tbody>

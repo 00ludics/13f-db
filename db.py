@@ -217,6 +217,22 @@ def create_tables():
                 )
             """)
 
+            cur.execute(""" 
+            CREATE TABLE IF NOT EXISTS cusip_symbol_mapping (
+                cusip text NOT NULL,
+                symbol text,
+                name text,
+                exchange text,
+                sector text,
+                industry text,
+                created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_cusip_symbol_mapping_on_cusip
+                ON cusip_symbol_mapping USING btree (cusip);
+            """)
+
             conn.commit()
             logging.info("Tables created successfully.")
         else:
@@ -507,6 +523,8 @@ def create_views():
                 ah.report_quarter,
                 COUNT(*) AS filings_count
             FROM aggregate_holdings ah
+            JOIN filings f ON ah.filing_id = f.id
+            WHERE f.restated_by IS NULL
             GROUP BY ah.cusip, ah.report_year, ah.report_quarter
             ORDER BY ah.cusip, ah.report_year, ah.report_quarter;
 
@@ -518,10 +536,10 @@ def create_views():
             "cusip_quarterly_filings_counts materialized view and index created."
         )
 
-        # Create company_cusip_lookups materialized view
-        logging.info("Creating company_cusip_lookups materialized view...")
+        # Create security_cusip_lookups materialized view
+        logging.info("Creating security_cusip_lookups materialized view...")
         cur.execute("""
-            CREATE MATERIALIZED VIEW IF NOT EXISTS company_cusip_lookups AS 
+            CREATE MATERIALIZED VIEW IF NOT EXISTS security_cusip_lookups AS 
             WITH holding_counts AS (
                 SELECT 
                     aggregate_holdings.cusip,
@@ -531,7 +549,7 @@ def create_views():
                     COUNT(*) AS holdings_count
                 FROM aggregate_holdings
                 GROUP BY aggregate_holdings.cusip, aggregate_holdings.nameofissuer,
-                         aggregate_holdings.titleofclass, aggregate_holdings.sshprnamttype
+                        aggregate_holdings.titleofclass, aggregate_holdings.sshprnamttype
             ),
             most_common AS (
                 SELECT DISTINCT ON (holding_counts.cusip) 
@@ -542,23 +560,26 @@ def create_views():
                     holding_counts.holdings_count
                 FROM holding_counts
                 ORDER BY holding_counts.cusip, holding_counts.holdings_count DESC, 
-                         holding_counts.nameofissuer, holding_counts.titleofclass
+                        holding_counts.nameofissuer, holding_counts.titleofclass
             )
             SELECT 
                 mc.cusip,
                 mc.nameofissuer,
                 mc.titleofclass,
                 mc.sshprnamttype,
-                mc.holdings_count
-            FROM most_common mc;
+                mc.holdings_count,
+                csm.symbol
+            FROM most_common mc
+            LEFT JOIN cusip_symbol_mapping csm ON mc.cusip = csm.cusip;
 
-            CREATE INDEX IF NOT EXISTS idx_company_cusip_lookups_on_count_and_name 
-            ON company_cusip_lookups (holdings_count, lower(nameofissuer));
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_company_cusip_lookups_on_cusip ON company_cusip_lookups (cusip);
-            CREATE INDEX IF NOT EXISTS idx_company_cusip_lookups_on_issuer_name ON company_cusip_lookups USING gin (nameofissuer gin_trgm_ops);
+            CREATE INDEX IF NOT EXISTS idx_security_cusip_lookups_on_count_and_name 
+            ON security_cusip_lookups (holdings_count, lower(nameofissuer));
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_security_cusip_lookups_on_cusip ON security_cusip_lookups (cusip);
+            CREATE INDEX IF NOT EXISTS idx_security_cusip_lookups_on_issuer_name ON security_cusip_lookups USING gin (nameofissuer gin_trgm_ops);
+            CREATE INDEX IF NOT EXISTS idx_security_cusip_lookups_on_symbol ON security_cusip_lookups USING gin (symbol gin_trgm_ops);
         """)
         conn.commit()
-        logging.info("company_cusip_lookups materialized view and indices created.")
+        logging.info("security_cusip_lookups materialized view and indices created.")
 
     except psycopg2.Error as e:
         logging.error(f"Error creating materialized views: {str(e)}")
@@ -587,7 +608,7 @@ def refresh_views():
             REFRESH MATERIALIZED VIEW aggregate_holdings;
             REFRESH MATERIALIZED VIEW filers;
             REFRESH MATERIALIZED VIEW cusip_quarterly_filings_counts;
-            REFRESH MATERIALIZED VIEW company_cusip_lookups;
+            REFRESH MATERIALIZED VIEW security_cusip_lookups;
         """)
         conn.commit()
         logging.info("All materialized views refreshed.")

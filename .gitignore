@@ -24,3 +24,5 @@ progress/
 # misc
 .DS_Store
 .vscode
+
+script.py

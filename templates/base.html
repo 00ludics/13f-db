@@ -1,3 +1,4 @@
+<!-- base.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -19,9 +20,11 @@
             margin: 0 auto;
             padding: 0 1em;
         }
-        .search-container {
-            max-width: 40em;
-            margin: 2em auto;
+        .search-container-small {
+            max-width: 24em;
+            width: 100%;
+            margin-left: auto;
+            position: relative;
         }
         .search-input {
             width: 100%;
@@ -35,6 +38,15 @@
             outline: none;
             border-color: #555;
             box-shadow: 0 0 0 2px rgba(85, 85, 85, 0.2);
+        }
+        .search-results {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .search-category {
+            font-weight: bold;
+            padding: 0.5em;
+            background-color: #f0f0f0;
         }
         table {
             width: 100%;
@@ -90,11 +102,26 @@
     </style>
 </head>
 <body>
-    <div class="container">
-        <header class="py-4">
+    <div class="container" x-data="searchComponent()">
+        <header class="py-4 flex justify-between items-center">
             <h1 id="homeButton" class="text-3xl font-normal home-button" data-home-url="{{ url_for('index') }}">
                 13F DB
             </h1>
+            {% if request.endpoint != 'index' %}
+            <div class="search-container-small">
+                <input 
+                    type="text" 
+                    x-model="query" 
+                    @input.debounce.300ms="searchResults"
+                    placeholder="Search..." 
+                    class="search-input"
+                >
+                <div x-show="hasResults" 
+                     x-html="resultsHtml"
+                     class="absolute z-10 w-full bg-white border rounded mt-1 shadow-lg search-results">
+                </div>
+            </div>
+            {% endif %}
         </header>
         <div class="header-divider"></div>
         <main>
@@ -105,6 +132,62 @@
         document.getElementById('homeButton').addEventListener('click', function() {
             window.location.href = this.getAttribute('data-home-url');
         });
+
+        function searchComponent() {
+            return {
+                query: '',
+                hasResults: false,
+                resultsHtml: '',
+                searchResults() {
+                    if (this.query.length < 2) {
+                        this.hasResults = false;
+                        this.resultsHtml = '';
+                        return;
+                    }
+                    fetch(`/search?query=${encodeURIComponent(this.query)}`)
+                        .then(response => response.json())
+                        .then(data => {
+                            const managers = data.filter(item => item.type === 'manager');
+                            const securities = data.filter(item => item.type === 'security');
+                            
+                            let html = '';
+                            if (managers.length > 0) {
+                                html += '<div class="search-category">Managers</div>';
+                                managers.forEach(result => {
+                                    html += `
+                                        <a href="/manager/${result.id}" class="block p-3 hover:bg-gray-100 transition duration-150 ease-in-out">
+                                            <div class="font-semibold">${result.name}</div>
+                                            <div class="text-sm text-gray-600">
+                                                ${result.location} • ${result.filings_count} filings
+                                            </div>
+                                        </a>
+                                    `;
+                                });
+                            }
+                            if (securities.length > 0) {
+                                html += '<div class="search-category">Securities</div>';
+                                securities.forEach(result => {
+                                    html += `
+                                        <a href="/security/${result.id}" class="block p-3 hover:bg-gray-100 transition duration-150 ease-in-out">
+                                            <div class="font-semibold">${result.name}</div>
+                                            <div class="text-sm text-gray-600">
+                                                ${result.symbol ? result.symbol + ' • ' : ''}${result.holdings_count} holders
+                                            </div>
+                                        </a>
+                                    `;
+                                });
+                            }
+                            this.resultsHtml = html;
+                            this.hasResults = managers.length > 0 || securities.length > 0;
+                        })
+                        .catch(error => {
+                            console.error('Error:', error);
+                            this.hasResults = false;
+                            this.resultsHtml = '';
+                        });
+                }
+            }
+        }
     </script>
 </body>
 </html>

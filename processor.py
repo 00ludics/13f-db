@@ -802,6 +802,7 @@ def post_process_data():
                 SELECT 
                     cik, 
                     periodofreport,
+                    MAX(CASE WHEN amendmenttype = 'RESTATEMENT' THEN filing_date ELSE '1900-01-01'::DATE END) AS latest_restatement_date,
                     MAX(filing_date) AS latest_filing_date
                 FROM filings
                 WHERE amendmenttype IS NULL OR amendmenttype = 'RESTATEMENT'
@@ -813,16 +814,31 @@ def post_process_data():
                 SELECT 
                     lf.cik,
                     lf.periodofreport,
+                    lf.latest_restatement_date,
                     lf.latest_filing_date,
-                    f2.id AS latest_filing_id
+                    CASE
+                        WHEN lf.latest_restatement_date = lf.latest_filing_date THEN
+                            (SELECT id FROM filings f2
+                             WHERE f2.cik = lf.cik 
+                             AND f2.periodofreport = lf.periodofreport 
+                             AND f2.filing_date = lf.latest_filing_date
+                             AND f2.amendmenttype = 'RESTATEMENT'
+                             LIMIT 1)
+                        ELSE
+                            (SELECT id FROM filings f2
+                             WHERE f2.cik = lf.cik 
+                             AND f2.periodofreport = lf.periodofreport 
+                             AND f2.filing_date = lf.latest_filing_date
+                             LIMIT 1)
+                    END AS latest_filing_id
                 FROM latest_filings lf
-                JOIN filings f2 ON f2.cik = lf.cik 
-                    AND f2.periodofreport = lf.periodofreport 
-                    AND f2.filing_date = lf.latest_filing_date
             ) lf
             WHERE f.cik = lf.cik
             AND f.periodofreport = lf.periodofreport
-            AND f.filing_date < lf.latest_filing_date
+            AND (
+                (f.filing_date < lf.latest_filing_date)
+                OR (f.filing_date = lf.latest_filing_date AND f.amendmenttype IS NULL AND lf.latest_restatement_date = lf.latest_filing_date)
+            )
             AND (f.amendmenttype IS NULL OR f.amendmenttype = 'RESTATEMENT')
             AND f.id != lf.latest_filing_id;
         """)

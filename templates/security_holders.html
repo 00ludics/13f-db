@@ -11,6 +11,34 @@
             <span class="info-label">CUSIP:</span>
             <span class="info-value">{{ security.cusip }}</span>
         </div>
+        {% if security.symbol %}
+        <div class="info-item">
+            <span class="info-label">Symbol:</span>
+            <span class="info-value">{{ security.symbol }}</span>
+        </div>
+        {% endif %}
+        <div class="info-item">
+            <span class="info-label">Title of Class:</span>
+            <span class="info-value">{{ security.titleofclass }}</span>
+        </div>
+        {% if security.exchange %}
+        <div class="info-item">
+            <span class="info-label">Exchange:</span>
+            <span class="info-value">{{ security.exchange }}</span>
+        </div>
+        {% endif %}
+        {% if security.sector %}
+        <div class="info-item">
+            <span class="info-label">Sector:</span>
+            <span class="info-value">{{ security.sector }}</span>
+        </div>
+        {% endif %}
+        {% if security.industry %}
+        <div class="info-item">
+            <span class="info-label">Industry:</span>
+            <span class="info-value">{{ security.industry }}</span>
+        </div>
+        {% endif %}
         <div class="info-item">
             <span class="info-label">Period:</span>
             <span class="info-value">{{ year }} Q{{ quarter }}</span>
@@ -30,6 +58,7 @@
                     <th>CIK</th>
                     <th>Value ($1000)</th>
                     <th>Shares</th>
+                    <th>Percentage</th>
                 </tr>
             </thead>
             <tbody>
@@ -41,8 +70,9 @@
                         </a>
                     </td>
                     <td>{{ holder.cik }}</td>
-                    <td>{{ "{:,.0f}".format(holder.value) }}</td>
+                    <td>{{ "${:,.0f}".format(holder.value) }}</td>
                     <td>{{ "{:,.0f}".format(holder.sshprnamt) }}</td>
+                    <td>{{ "{:.2f}%".format(holder.percentage) }}</td>
                 </tr>
                 {% endfor %}
             </tbody>

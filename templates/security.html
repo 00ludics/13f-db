@@ -1,3 +1,4 @@
+<!-- security.html -->
 {% extends "base.html" %}
 
 {% block title %}{{ security.nameofissuer }} - 13F DB{% endblock %}
@@ -10,10 +11,34 @@
             <span class="info-label">CUSIP:</span>
             <span class="info-value">{{ security.cusip }}</span>
         </div>
+        {% if security.symbol %}
+        <div class="info-item">
+            <span class="info-label">Symbol:</span>
+            <span class="info-value">{{ security.symbol }}</span>
+        </div>
+        {% endif %}
         <div class="info-item">
             <span class="info-label">Title of Class:</span>
             <span class="info-value">{{ security.titleofclass }}</span>
         </div>
+        {% if security.exchange %}
+        <div class="info-item">
+            <span class="info-label">Exchange:</span>
+            <span class="info-value">{{ security.exchange }}</span>
+        </div>
+        {% endif %}
+        {% if security.sector %}
+        <div class="info-item">
+            <span class="info-label">Sector:</span>
+            <span class="info-value">{{ security.sector }}</span>
+        </div>
+        {% endif %}
+        {% if security.industry %}
+        <div class="info-item">
+            <span class="info-label">Industry:</span>
+            <span class="info-value">{{ security.industry }}</span>
+        </div>
+        {% endif %}
     </section>
 
     <h2 class="text-xl mb-2">Quarterly Filing Counts</h2>
