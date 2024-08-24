@@ -604,7 +604,6 @@ def refresh_views():
 
         logging.info("Refreshing materialized views...")
         cur.execute("""
-            REFRESH MATERIALIZED VIEW median_value_per_share;
             REFRESH MATERIALIZED VIEW aggregate_holdings;
             REFRESH MATERIALIZED VIEW filers;
             REFRESH MATERIALIZED VIEW cusip_quarterly_filings_counts;

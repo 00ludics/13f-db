@@ -195,7 +195,7 @@ def security(cusip):
     )
 
 
-@app.route("/filing/<cik>/<period_accession>")
+@app.route("/manager/<cik>/<period_accession>")
 def filing(cik, period_accession):
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
@@ -241,7 +241,7 @@ def filing(cik, period_accession):
     return render_template("filing.html", filing=filing_info, holdings=holdings)
 
 
-@app.route("/security_manager/<cusip>/<cik>")
+@app.route("/security/<cusip>/<cik>")
 def security_manager(cusip, cik):
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
@@ -320,7 +320,7 @@ def security_manager(cusip, cik):
     )
 
 
-@app.route("/security_holders/<cusip>/<int:year>/<int:quarter>")
+@app.route("/security/<cusip>/<int:year>/<int:quarter>")
 def security_holders(cusip, year, quarter):
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
