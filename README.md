@@ -1,6 +1,11 @@
 # 13f-db
 
-A tool for downloading and processing SEC 13F filings data, storing it in a PostgreSQL database, and providing a web interface with search.
+A python tool for downloading and processing SEC 13F filings data, storing it in a PostgreSQL database. There is also a UI for searching through filings. 
+
+## Disclaimer
+
+The SEC provides no guarantees as to the accuracy of 13F data, there are often errors, and the data is delayed by $O(45)$ days after the end of the quarter, by which point a manager may have completely different positions. 13F filings also do not provide a complete account of the exposure managers have, for instance options are reported based on the notional value of the position and can therefore be very misleading (I remove them for this reason, you may not want to do this)—also short positions are not reported.
+
 
 ## Setup
 
