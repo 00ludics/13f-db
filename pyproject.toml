@@ -1,9 +1,9 @@
 [project]
 name = "13f-db"
 version = "0.1.0"
-description = "Add your description here"
+description = "A python tool for downloading and processing SEC 13F filings data."
 authors = [
-    { name = "ludics1828", email = "contact@ludics.xyz" }
+    { name = "0xludics", email = "contact@ludics.xyz" }
 ]
 dependencies = [
     "asyncio>=3.4.3",
